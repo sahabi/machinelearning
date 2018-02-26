@@ -4,12 +4,12 @@ let
 
   inherit (nixpkgs) pkgs;
 
-  f = { mkDerivation, base, stdenv, vector }:
+  f = { mkDerivation, base, hmatrix, stdenv, vector }:
       mkDerivation {
         pname = "machinelearning";
         version = "0.1.0.0";
         src = ./.;
-        libraryHaskellDepends = [ base vector ];
+        libraryHaskellDepends = [ base hmatrix vector ];
         description = "A machine learning library";
         license = stdenv.lib.licenses.bsd3;
       };
