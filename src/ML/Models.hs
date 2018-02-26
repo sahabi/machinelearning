@@ -46,7 +46,7 @@ trainLBReg m d = updateWeights m w e where
   dps = fmap fst d
   p = lbPredict m
   w = pinv dm #> t where
-    dm = (length dps >< length fs) $ fs <*> dps
+    dm = tr' $ (length fs >< length dps) $ fs <*> dps
   e = sosError t pr where pr = vector $ fmap (p w fs) dps
 
 sosError :: (Num (Vector a), Floating a, Container Vector a) => Vector a -> Vector a -> a
@@ -56,7 +56,7 @@ lbEval :: LBWeights -> LBFuncs (LBInput Double) -> LBInput Double -> Double
 lbEval w fs d = w <.> vector (zipWith ($) fs $ replicate (length fs) d)
 
 mkLBId :: Int -> LBFuncs (LBInput Double)
-mkLBId n = const 1 : [ (!!x) | x <- [0 .. n-1]]
+mkLBId n = const 1 : [(!!x) | x <- [0 .. n-1]]
 
 mkLBReg :: LBFuncs (LBInput Double) -> LabeledSet Double -> LBReg (LBInput Double) Double
 mkLBReg bfs = train LBReg { lbFuncs = bfs
@@ -67,7 +67,7 @@ mkLBReg bfs = train LBReg { lbFuncs = bfs
 
 mkSLBReg :: LabeledSet Double -> LBReg (LBInput Double) Double
 mkSLBReg  ds = train LBReg { lbFuncs = mkLBId n
-                           , lbWeights = vector $ replicate n 0
+                           , lbWeights = vector $ replicate (n+1) 0
                            , lbPredict = lbEval
                            , lbError = 999
                            } ds where n = length $ fst $ head ds
