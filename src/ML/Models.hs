@@ -15,34 +15,30 @@ class Trainable m a b where
 class Predictive m where
   predict :: m a b -> a -> b
 
-vmap f = fromList . fmap f . toList
-
-type LBInput a = [a]
-type LabeledSet a = [(LBInput a, Double)]
 type LBWeights = Vector Double
 type LBFuncs a = [a -> Double]
 
-data LBReg a b = LBReg { lbFuncs   :: LBFuncs (LBInput Double)
+data LBReg a b = LBReg { lbFuncs   :: LBFuncs a
                        , lbWeights :: LBWeights
                        , lbError   :: Double
                        , lbReg     :: Double
                        , lbPredict :: LBWeights
-                                   -> LBFuncs (LBInput Double)
+                                   -> LBFuncs a
                                    -> a
                                    -> b
                        }
 
-instance Trainable LBReg [Double] Double where
+instance Trainable LBReg [a] Double where
   train = trainLBReg
 
 instance Predictive LBReg where
   predict m = lbPredict m (lbWeights m) (lbFuncs m)
 
-data OLBReg a b = OLBReg { olbFuncs   :: LBFuncs (LBInput Double)
+data OLBReg a b = OLBReg { olbFuncs   :: LBFuncs [Double]
                          , olbWeights :: LBWeights
                          , lrate      :: Double
                          , olbPredict :: LBWeights
-                                      -> LBFuncs (LBInput Double)
+                                      -> LBFuncs [Double]
                                       -> a
                                       -> b
                          }
@@ -58,51 +54,42 @@ updateOWeights x w = x { olbWeights = w }
 
 seqTrain :: OLBReg [Double] Double -> ([Double], Double) -> OLBReg [Double] Double
 seqTrain m dp = updateOWeights m $
-  w' + vmap (lrate m * (t - (w' <.> fi)) * ) fi where
+  w' + cmap (lrate m * (t - (w' <.> fi)) * ) fi where
     t = snd dp
     w' = olbWeights m
     fs = olbFuncs m
     fi = vector (zipWith ($) fs $ replicate (length fs) (fst dp))
 
-trainLBReg :: LBReg [Double] Double -> [([Double], Double)] -> LBReg [Double] Double
+trainLBReg :: LBReg [a] Double -> [([a], Double)] -> LBReg [a] Double
 trainLBReg m d = updateWeights m w e where
   t = vector (fmap snd d)
   fs = lbFuncs m
   dps = fmap fst d
   p = lbPredict m
   reg = lbReg m
-  iden = ident 5 :: Matrix Double
+  iden = ident $ 1 + (length . head) dps :: Matrix Double
   w = (inv (cmap (reg*) iden + (tr' dm <> dm)) <>  tr' dm) #> t where
     dm = tr' $ (length fs >< length dps) $ fs <*> dps
   e = sosError t pr where pr = vector $ fmap (p w fs) dps
 
-sosError :: (Num (Vector a), Floating a, Container Vector a)
-         => Vector a -> Vector a -> a
-sosError t pr = sumElements $ vmap ((/2) . (**2)) $ t - pr
+sosError :: Vector Double -> Vector Double -> Double
+sosError t pr = sumElements $ cmap ((/2) . (**2)) $ t - pr
 
-lbEval :: LBWeights -> LBFuncs (LBInput Double) -> LBInput Double -> Double
+lbEval :: LBWeights -> LBFuncs [a] -> [a] -> Double
 lbEval w fs d = w <.> vector (zipWith ($) fs $ replicate (length fs) d)
 
-mkLBId :: Int -> LBFuncs (LBInput Double)
+mkLBId :: Int -> LBFuncs [Double]
 mkLBId n = const 1 : [(!!x) | x <- [0 .. n-1]]
 
-mkLBReg :: LBFuncs (LBInput Double) -> LabeledSet Double -> LBReg (LBInput Double) Double
-mkLBReg bfs = train LBReg { lbFuncs = bfs
-                          , lbWeights = vector $ replicate (length bfs + 1) 1
-                          , lbPredict = lbEval
-                          , lbError = 999
-                          , lbReg = 1
-                          }
-
-mkSLBReg :: Double -> LabeledSet Double -> LBReg (LBInput Double) Double
+mkSLBReg :: Double -> [([Double], Double)] -> LBReg [Double] Double
 mkSLBReg reg ds = train LBReg { lbFuncs = mkLBId n
-                           , lbWeights = vector $ replicate (n+1) 1
-                           , lbPredict = lbEval
-                           , lbError = 999
-                           , lbReg = reg
-                           } ds where n = length $ fst $ head ds
+                              , lbWeights = vector $ replicate (n+1) 1
+                              , lbPredict = lbEval
+                              , lbError = fromIntegral (maxBound :: Int)
+                              , lbReg = reg
+                              } ds where n = length $ fst $ head ds
 
-mkSOLBReg :: Double -> LabeledSet Double -> OLBReg (LBInput Double) Double
+mkSOLBReg :: Double -> [([Double], Double)] -> OLBReg [Double] Double
 mkSOLBReg lr ds = train OLBReg { olbFuncs = mkLBId n
                             , olbWeights = vector $ replicate (n+1) 1
                             , olbPredict = lbEval
